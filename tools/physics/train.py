@@ -76,7 +76,7 @@ def train(sample_file, destination):
         relevant = ((rows[:,2]==code)|(terrain=="oracle")) & domain
         training = relevant & np.isin(seed,list(TRAIN)) & (weight>1e-5) & (terrain!="water")
         valid = relevant & np.isin(seed,list(VALID)) & (terrain!="water")
-        hold = relevant & (np.isin(seed,list(HOLD)) | (terrain=="water"))
+        hold = relevant & np.isin(seed,list(HOLD))
         if not all(mask.any() for mask in (training,valid,hold,hold&(terrain!="oracle"))):
             raise ValueError(f"{family} 缺少独立训练或验证轨迹")
         trials = []
