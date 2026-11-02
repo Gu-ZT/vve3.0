@@ -4,12 +4,15 @@ import hashlib
 import itertools
 import json
 import random
+import re
 import zipfile
 from pathlib import Path
 
 import numpy as np
 
-from replay import Case, SCENES, execute
+from prepare import ROOT, prepare
+from replay import Case, SCENES, execute, suite
+from gametest import records
 
 
 def variant(path):
@@ -45,50 +48,127 @@ def intervals(rows, cases):
     return result
 
 
-def benchmark(work, name, formula, network, target, scenes, rounds):
-    if rounds < 12 or target not in scenes:
-        raise ValueError("须至少 12 轮，并包含事先选定的目标场景")
-    cases = [Case(s, 19, n, 1000, 200) for s in scenes for n in (1,16,64)]
-    files = {"original": None, "formula": formula, "network": network}
-    candidates = {g: variant(p) for g,p in files.items()}
-    output = work / "results" / name
-    output.mkdir(parents=True, exist_ok=True)
-    config = {"target": target, "cases": [vars(c) for c in cases], "rounds": rounds,
-              "variants": {g: hashlib.sha256(p.read_bytes()).hexdigest() if p else None for g,p in files.items()}}
-    (output / "protocol.json").write_text(json.dumps(config,indent=2), encoding="utf-8")
-    orders = list(itertools.permutations(files))
-    rng = random.Random(2603)
-    rows = []
-    for round_no in range(rounds):
-        if round_no % 6 == 0:
+CALL=re.compile(rb"(\bfunction\s+)((?:vve|vve_examples):[a-z0-9_./-]+)")
+
+
+def isolate(label, path):
+    extra, overrides=variant(path)
+    namespace=("lab_"+label).encode()
+    assets={k.replace("data/lab/","data/"+namespace.decode()+"/"):v.replace(b"lab:",namespace+b":")
+            for k,v in extra.items()}
+    sources={}
+    changed=set()
+    for ns in ("vve","vve_examples"):
+        folder=ROOT/"data"/ns/"function"
+        for f in folder.rglob("*.mcfunction"):
+            key=(ns+":"+f.relative_to(folder).with_suffix("").as_posix()).encode()
+            rel=f.relative_to(ROOT).as_posix()
+            sources[key]=overrides.get(rel,f.read_bytes())
+            if rel in overrides:
+                changed.add(key)
+    edges={key:{m[1] for m in CALL.findall(body)} for key,body in sources.items()}
+    old_size=-1
+    while len(changed)!=old_size:
+        old_size=len(changed)
+        changed.update(key for key,refs in edges.items() if refs & changed)
+    names={key:namespace+b":"+key.replace(b":",b"/") for key in changed}
+
+    def rewrite(data):
+        return CALL.sub(lambda m:m[1]+names.get(m[2],m[2]),data.replace(b"lab:",namespace+b":"))
+
+    for key,new in names.items():
+        prefix,sub=new.decode().split(":")
+        assets[f"data/{prefix}/function/{sub}.mcfunction"]=rewrite(sources[key])
+    return assets,names
+
+
+def trial(work,name,formula,network,target,scenes,rounds=12,check=False):
+    if not check and rounds<12:
+        raise ValueError("正式性能测试要求至少十二轮")
+    if target not in scenes:
+        raise ValueError("目标场景不在测试集")
+    variants={"original":None,"formula":formula,"network":network}
+    groups=[(s,n) for s in scenes for n in ((1,) if check else (1,16,64))]
+    orders=list(itertools.permutations(variants))
+    schedule=[]
+    rng=random.Random(2603)
+    for r in range(rounds):
+        if r%6==0:
             rng.shuffle(orders)
-        row = {}
-        for group in orders[round_no % 6]:
-            print(f"{round_no+1}/{rounds} {group}", flush=True)
-            dest, _ = execute(work, f"{name}/round-{round_no+1}/{group}", cases, False, *candidates[group])
-            row[group] = json.loads((dest/"timings.json").read_text(encoding="utf-8"))
-        rows.append(row)
-    summary = intervals(rows, cases)
-    for count in (1,16,64):
-        if not any(s["count"] == count for s in summary):
-            raise ValueError("缺少物体数量分组")
-    # 目标场景以 64 个活动物体为主测组。其他组按无明显退化检验。
-    for s in summary:
-        target_load = s["scene"] == target and s["count"] == 64
-        upper = max(s["ratio_original"][1], s["ratio_formula"][1])
-        s["pass"] = upper < 1 if target_load else upper <= 1.02
-    (output / "summary.json").write_text(json.dumps(summary,indent=2), encoding="utf-8")
-    return all(s["pass"] for s in summary)
+        indexes=list(range(len(groups)))
+        rng.shuffle(indexes)
+        for j in indexes:
+            for mode in orders[(r+j)%6]:
+                schedule.append((r,j,mode))
+    base=[Case(s,19,n,200 if check else 1000,0 if check else 200) for s,n in groups]
+    cases=[base[j] for r,j,mode in schedule]
+    entries=suite(cases,check)
+    for mode,file in variants.items():
+        if file is None:
+            continue
+        assets,names=isolate(mode,file)
+        entries.update(assets)
+        for i,(_,_,g) in enumerate(schedule):
+            if g!=mode:
+                continue
+            path=f"data/lab/function/case_{i}/tick.mcfunction"
+            entries[path]=CALL.sub(lambda m:m[1]+names.get(m[2],m[2]),entries[path])
+    out=work/"results"/name
+    out.mkdir(parents=True,exist_ok=True)
+    (out/"summary.json").unlink(missing_ok=True)
+    original_pack=prepare(work,server=True)/"vve.zip"
+    protocol={"target":target,"groups":groups,"rounds":rounds,"schedule":schedule,
+              "archives":{k:hashlib.sha256((p or original_pack).read_bytes()).hexdigest() for k,p in variants.items()},
+              "warmup":base[0].warmup,"ticks":base[0].ticks}
+    (out/"protocol.json").write_text(json.dumps(protocol,indent=2),encoding="utf-8")
+    execute(work,name,cases,check,entries)
+    return out, (True if check else summarize(out))
+
+
+def summarize(out):
+    """从完整服务端日志重建统计。缺少整轮、少了物体或序号重复都禁止判定通过。"""
+    protocol=json.loads((out/"protocol.json").read_text(encoding="utf-8"))
+    rounds=protocol["rounds"]
+    if rounds<12 or protocol["warmup"]!=200 or protocol["ticks"]!=1000:
+        raise ValueError("计时协议不满足准入条件")
+    groups=protocol["groups"]
+    target=protocol["target"]
+    if [target,64] not in groups:
+        raise ValueError("缺少目标场景的 64 物体组")
+    schedule=protocol["schedule"]
+    expected={(r,j,m) for r in range(rounds) for j in range(len(groups)) for m in ("original","formula","network")}
+    if len(schedule)!=len(expected) or {tuple(row) for row in schedule}!=expected:
+        raise ValueError("三组运行次序不完整")
+    logs=(out/"server.log").read_text(encoding="utf-8",errors="replace").splitlines()
+    times=records(logs,"TIME")
+    if len(times)!=len(schedule) or not any("] VVE_DONE" in line for line in logs):
+        raise ValueError("服务器尚未完成所有测量")
+    rows=[{m:[None]*len(groups) for m in ("original","formula","network")} for _ in range(rounds)]
+    for seq,((r,j,m),(i,us,alive)) in enumerate(zip(schedule,times,strict=True)):
+        if i!=seq or alive!=groups[j][1] or us<=0:
+            raise ValueError(f"第 {seq} 个测量块无效")
+        rows[r][m][j]={"us":us}
+    base=[Case(s,19,n,protocol["ticks"],protocol["warmup"]) for s,n in groups]
+    summary=intervals(rows,base)
+    for row in summary:
+        upper=max(row["ratio_original"][1],row["ratio_formula"][1])
+        row["pass"]=upper<1 if (row["scene"],row["count"])==(target,64) else upper<=1.02
+    (out/"summary.json").write_text(json.dumps(summary,indent=2),encoding="utf-8")
+    return all(row["pass"] for row in summary)
 
 
 if __name__ == "__main__":
-    p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("directory", type=Path)
+    p=argparse.ArgumentParser(description=__doc__)
+    p.add_argument("directory",type=Path)
     p.add_argument("name")
-    p.add_argument("formula", type=Path)
-    p.add_argument("network", type=Path)
-    p.add_argument("--target", choices=list(SCENES), required=True)
-    p.add_argument("--scenes", nargs="+", choices=list(SCENES), default=list(SCENES))
-    p.add_argument("--rounds", type=int, default=12)
-    a = p.parse_args()
-    print("通过" if benchmark(a.directory.resolve(), a.name, a.formula, a.network, a.target, a.scenes, a.rounds) else "未通过")
+    p.add_argument("formula",type=Path)
+    p.add_argument("network",type=Path)
+    p.add_argument("--target",choices=list(SCENES),required=True)
+    p.add_argument("--scenes",nargs="+",choices=list(SCENES),required=True)
+    p.add_argument("--rounds",type=int,default=12)
+    p.add_argument("--check",action="store_true",help="仅验证同 JVM 内的版本切换与轨迹")
+    a=p.parse_args()
+    location,passed=trial(a.directory.resolve(),a.name,a.formula,a.network,a.target,a.scenes,
+                          1 if a.check else a.rounds,a.check)
+    print(location, "通过" if passed else "未通过")
+    raise SystemExit(0 if passed else 2)

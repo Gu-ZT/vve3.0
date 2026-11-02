@@ -59,4 +59,6 @@ if __name__=="__main__":
     p.add_argument("variants",type=Path)
     p.add_argument("--seeds",nargs="+",type=int,default=[19,173,197])
     a=p.parse_args()
-    evaluate(a.directory.resolve(),a.name,a.variants,a.seeds)
+    result=evaluate(a.directory.resolve(),a.name,a.variants,a.seeds)
+    passed=all(not s["reasons"] for scenes in result.values() for s in scenes.values())
+    raise SystemExit(0 if passed else 2)

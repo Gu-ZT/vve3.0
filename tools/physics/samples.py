@@ -1,7 +1,6 @@
 """从原版姿态求解器采集车辆和普通刚体的输入输出。"""
 import argparse
 import json
-import random
 from pathlib import Path
 
 import numpy as np
@@ -51,7 +50,7 @@ def quat_product(a, b):
 
 
 def probes(entries, seeds, count):
-    # 整条合成轨迹共享一个平面和朝向区间，同一轨迹只能属于一个数据集分区。
+    # 合成探针覆盖不同平面和朝向，同一随机种子的整组探针只属于一个分区。
     _, exact, _ = original_pose(next(iter(POSE_FILES)))
     function(entries, "lab:oracle/pose", ["function math:quat/_touvw", "function lab:before_object",
                                          exact, "function lab:after"])

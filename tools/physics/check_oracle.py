@@ -74,10 +74,13 @@ def verify(work, models):
                 velocity=float(max(np.linalg.norm(np.subtract(r[10:13],teacher[r[0]][10:13]))/10000 for r in matched)))
     (dest/"accuracy.json").write_text(json.dumps(results,indent=2),encoding="utf-8")
     print(results,flush=True)
+    return all(r["max_deg"]<=.25 and r["position"]<=.005 and r["velocity"]<=.005 and
+               r["fallback_mismatches"]==0 for r in results.values())
 
 
 if __name__=="__main__":
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument("directory",type=Path)
     a=p.parse_args()
-    verify(a.directory.resolve(),json.loads((a.directory/"results/models.json").read_text(encoding="utf-8")))
+    passed=verify(a.directory.resolve(),json.loads((a.directory/"results/models.json").read_text(encoding="utf-8")))
+    raise SystemExit(0 if passed else 2)
