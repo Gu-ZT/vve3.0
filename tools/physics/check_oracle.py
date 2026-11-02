@@ -7,7 +7,7 @@ import numpy as np
 
 from export import build
 from gametest import function, records, run
-from samples import INPUTS, QUAT
+from samples import INPUTS
 from train import HOLD
 
 
