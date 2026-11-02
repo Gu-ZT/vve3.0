@@ -1,19 +1,13 @@
 {
-    "pack":{
-        "description": "version-3.0.4 by-xiaodoou123",
-        "pack_format": 71,
-        "supported_formats": [71, 107],
-        "min_format": 71,
-        "max_format": [107, 1]
-    },
-    "overlays":{
-    	"entries":[
-		{
-			"directory":"predicate_overlay",
-			"min_format": 71,
-			"max_format": 101,
-			"formats": [71,101]
-		}
-	]
-    }
+  "pack": {
+    "description": "VVE 3.0.4 · Minecraft 26.3",
+    "min_format": [
+      121,
+      0
+    ],
+    "max_format": [
+      121,
+      0
+    ]
+  }
 }

@@ -1,5 +1,5 @@
 {
-	"condition":"value_check",
+	"type":"int_value_check",
 	"value":{
 		"type":"score",
 		"target":{
@@ -8,7 +8,7 @@
 		},
 		"score":"vve_id"
 	},
-	"range":{
+	"test":{
 		"min":{
 			"type":"score",
 			"target":{

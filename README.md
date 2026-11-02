@@ -4,7 +4,7 @@ VVE（Vanilla Vehicle Engine）是面向原版 Minecraft 的高性能物理引�
 
 | 项目 | 信息 |
 | --- | --- |
-| 适用版本 | Minecraft 1.21.5 ~ 26.2 |
+| 适用版本 | Minecraft Java 26.3 |
 | 前置依赖 | `math3.1`、`math3.1_lalib`、`math3.1_gelib` |
 | 命名空间 | `vve`、`vve_examples`、`module_control` |
 
@@ -43,7 +43,9 @@ VVE 3 实现了对性能的精准把控，最多可以支持上百个物体实�
 
 ## 2. 安装方法
 
-除了 VVE 3 本体数据包之外，还需要安装以下依赖：
+本分支支持 Java 版 26.3 正式版。用 Python 3.11 或以上版本执行 `py -3 tools/physics/prepare.py C:/Temp/vve26 --server`，然后将输出目录 `packs` 中的四个 ZIP 放进世界的 `datapacks`。省略 `--server` 可只准备数据包。脚本校验上游归档后生成格式 121.0 的数学前置，游戏内直接加载生成的 ZIP。
+
+开发模块时使用下列工具与前置：
 
 | 类型 | 项目 | 版本要求 | 说明 |
 | --- | --- | --- | --- |

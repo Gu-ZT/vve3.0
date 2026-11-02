@@ -1,5 +1,5 @@
 {
-	"condition":"entity_scores",
+	"type":"entity_scores",
 	"entity":"this",
 	"scores":{
 		"chunk_x_min":{"max":{"type":"score","target":{"type":"fixed","name":"chunk_x"},"score":"int"},"min":-2147483648},
