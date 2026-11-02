@@ -11,6 +11,7 @@ from gametest import function, records, run
 SCENES = {
     "fall": "vve:point", "flat": "vve_examples:test_car", "slope": "vve_examples:green_car",
     "step": "vve_examples:test_car", "dice": "vve_examples:dice_6", "impact": "vve:cublock",
+    "rock": "vve_examples:test_car", "roll": "vve_examples:dice_6",
     "water": "vve_examples:test_boat", "slow": "vve_examples:green_car",
 }
 FIELDS = "tick id x y z vx vy vz quat_x quat_y quat_z quat_w surface stable".split()
@@ -28,7 +29,7 @@ class Case:
 
 
 def spawn(case, index, rng):
-    scene = case.scene
+    scene = {"rock":"flat", "roll":"dice"}.get(case.scene,case.scene)
     module = SCENES[scene]
     ns, model = module.split(":")
     row = index // 2 if scene == "impact" else index
@@ -78,7 +79,13 @@ def motion(scene):
                 f"{each} if score #phase lab matches 0 run function {module}/main_force",
                 f"{each} run function {module}/main_sync"]
     main = "main" if scene in ("impact", "fall") else "main_c"
-    return [f"{each} run function {module}/{main}"]
+    commands = []
+    if scene in ("rock","roll"):
+        commands = ["scoreboard players operation #phase lab = #tick lab",
+                    "scoreboard players operation #phase lab %= #period lab",
+                    f"{each} if score #phase lab matches 1 run function lab:{scene}_p",
+                    f"{each} if score #phase lab matches 25 run function lab:{scene}_n"]
+    return [*commands, f"{each} run function {module}/{main}"]
 
 
 def suite(cases, trace):
@@ -87,8 +94,16 @@ def suite(cases, trace):
     function(entries, "lab:init", ["function math:_init", "function math:_init_la", "function math:_init_ge",
              "function vve:_init", "scoreboard objectives add lab dummy", "scoreboard objectives add lab_id dummy",
              *[f"function {module}/init" for module in sorted(set(SCENES.values())) if module.startswith("vve_examples:")],
-             "stopwatch create lab:wall", "schedule function lab:case_0/start 3t"])
+             "scoreboard players set #period lab 48", "stopwatch create lab:wall", "schedule function lab:case_0/start 3t"])
     function(entries, "lab:done", ["say VVE_DONE"])
+    for scene in ("rock","roll"):
+        module = SCENES[scene]
+        for label,sign in (("p",1),("n",-1)):
+            function(entries, f"lab:{scene}_{label}", [f"function {module}/_get",
+                     f"scoreboard players set angular_z int {sign*(14000 if scene=='rock' else 95000)}",
+                     f"scoreboard players set vx int {sign*(140 if scene=='rock' else 300)}",
+                     f"scoreboard players set vy int {30 if scene=='rock' else 1150}",
+                     f"execute as {MARKER} run function vve:object/_set_angular",f"function {module}/_store"])
     frame = ["data modify storage lab:io row set value {surface:0,stable:0,quat_x:0,quat_y:0,quat_z:0,quat_w:10000}"]
     for field in FIELDS:
         if field in ("surface", "stable"):

@@ -28,7 +28,7 @@ def angle(a, b):
     return math.degrees(2 * math.acos(min(1, abs(sum(u*v for u,v in zip(x, y))) / norm)))
 
 
-HALVES = {"dice": (.25,.25,.25), "impact": (.25,.25,.25), "flat": (.5,.3,1),
+HALVES = {"dice": (.25,.25,.25), "roll": (.25,.25,.25), "rock": (.5,.3,1), "impact": (.25,.25,.25), "flat": (.5,.3,1),
           "slope": (.6,.4,1), "slow": (.6,.4,1), "step": (.5,.3,1), "water": (.5,.3,1)}
 
 
