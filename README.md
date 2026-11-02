@@ -2,6 +2,8 @@
 
 VVE（Vanilla Vehicle Engine）是面向原版 Minecraft 的高性能物理引擎数据包。
 
+本分支支持 Java 版 26.3。两类姿态模型经过游戏内精度和性能筛选，正式包沿用原物理算法。[实测结果、函数清单与复现方法](docs/性能实验/26.3/README.md)
+
 | 项目 | 信息 |
 | --- | --- |
 | 适用版本 | Minecraft Java 26.3 |
